@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "jdx-researcher": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/ABSOLUTE/PATH/TO/jdx-researcher",
+        "run",
+        "jdx-researcher",
+        "--config",
+        "configs/local.yaml",
+        "mcp-stdio"
+      ]
+    }
+  }
+}

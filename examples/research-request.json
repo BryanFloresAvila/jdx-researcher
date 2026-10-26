@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "objective": "Comparar llama.cpp y Ollama para investigación técnica con herramientas en un Mac M4 Pro de 24 GB",
+  "constraints": {
+    "hardware": "Apple M4 Pro",
+    "unified_memory_gb": 24,
+    "must_support": [
+      "tool_calling",
+      "local_inference"
+    ]
+  },
+  "subquestions": [
+    "Compatibilidad real de herramientas y formatos de chat",
+    "Memoria, rendimiento y condiciones de los benchmarks",
+    "Limitaciones documentadas y cambios de versión"
+  ],
+  "languages": [
+    "es",
+    "en"
+  ],
+  "output_language": "es",
+  "as_of": "2026-10-26",
+  "budget_profile": "balanced",
+  "idempotency_key": "runtime-comparison-001",
+  "seed_urls": [
+    "https://github.com/ggml-org/llama.cpp",
+    "https://docs.ollama.com/capabilities/tool-calling"
+  ]
+}

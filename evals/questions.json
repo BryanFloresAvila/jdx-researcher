@@ -1,0 +1,212 @@
+[
+  {
+    "question_id": "q01",
+    "language": "es",
+    "objective": "Comparar llama.cpp y Ollama en M4 Pro de 24 GB, con condiciones de tool calling y memoria.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q02",
+    "language": "en",
+    "objective": "Compare APNs HTTP/2 connection reuse strategies in Go using primary sources.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q03",
+    "language": "es",
+    "objective": "Verificar si un benchmark del modelo original se transfiere a una variante ablacionada.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q04",
+    "language": "en",
+    "objective": "Compare SQLite WAL checkpoint behavior under interrupted research jobs.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q05",
+    "language": "es",
+    "objective": "Identificar diferencias entre relevancia de un fragmento y soporte factual.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q06",
+    "language": "en",
+    "objective": "Evaluate SearXNG JSON API failure modes and provider dependence.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q07",
+    "language": "es",
+    "objective": "Comparar fechas de publicación y captura en documentación técnica actualizada.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q08",
+    "language": "en",
+    "objective": "Compare GGUF quantizations with exact runtime and hardware conditions.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q09",
+    "language": "es",
+    "objective": "Evaluar límites de extracción de PDF con tablas y texto seleccionable.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q10",
+    "language": "en",
+    "objective": "Find contradictory claims about a local inference benchmark and preserve both.",
+    "split": "train",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q11",
+    "language": "es",
+    "objective": "Comparar Qwen3-Reranker y selección léxica con corpus constante.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q12",
+    "language": "en",
+    "objective": "Determine whether mirror sites provide independent benchmark evidence.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q13",
+    "language": "es",
+    "objective": "Evaluar soporte de herramientas estructuradas en Agents-A1-4B con runtimes locales.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q14",
+    "language": "en",
+    "objective": "Verify MCP stdio versus Streamable HTTP lifecycle semantics.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q15",
+    "language": "es",
+    "objective": "Revisar idempotencia y reanudación cuando una petición externa pierde su respuesta.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q16",
+    "language": "en",
+    "objective": "Compare CPU and MPS reranking with measured memory overhead.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q17",
+    "language": "es",
+    "objective": "Investigar límites de contexto anunciados frente a contextos útiles medidos.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q18",
+    "language": "en",
+    "objective": "Compare current model hosting prices with dated primary source evidence.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q19",
+    "language": "es",
+    "objective": "Evaluar sesgo por orden y truncación en jueces de selección.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q20",
+    "language": "en",
+    "objective": "Check whether a score is calibrated for a specific decision domain.",
+    "split": "calibration",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q21",
+    "language": "es",
+    "objective": "Comparar implementaciones APNs en Go y conservar condiciones de throughput.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q22",
+    "language": "en",
+    "objective": "Investigate browser automation versus plain HTTP extraction tradeoffs.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q23",
+    "language": "es",
+    "objective": "Detectar un cambio de versión que invalida una recomendación técnica antigua.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q24",
+    "language": "en",
+    "objective": "Evaluate agent tool call schemas with invalid arguments and repair behavior.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q25",
+    "language": "es",
+    "objective": "Comparar tiempos de carga, prefill y generación sin mezclar sus métricas.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q26",
+    "language": "en",
+    "objective": "Verify independent reproduction of published small-agent benchmark claims.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q27",
+    "language": "es",
+    "objective": "Investigar costes de un pipeline incluyendo reranker y revisión adicional.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q28",
+    "language": "en",
+    "objective": "Evaluate job cancellation while an HTTP source finishes late.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q29",
+    "language": "es",
+    "objective": "Revisar una contradicción aparente causada por distintos datasets y hardware.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  },
+  {
+    "question_id": "q30",
+    "language": "en",
+    "objective": "Compare single-worker and concurrent download strategies under a fixed memory budget.",
+    "split": "test",
+    "status": "requires_real_corpus_and_human_labels"
+  }
+]

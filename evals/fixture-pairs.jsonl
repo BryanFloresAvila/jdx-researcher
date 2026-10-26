@@ -1,0 +1,3 @@
+{"question_id":"synthetic-1","query":"APNs throughput","passage_id":"fixture-a","text":"APNs throughput depends on HTTP/2 reuse and measurement conditions.","relevance":2,"split":"test","label_origin":"human_reviewed"}
+{"question_id":"synthetic-1","query":"APNs throughput","passage_id":"fixture-b","text":"Chocolate recipes and birthday decorations.","relevance":0,"split":"test","label_origin":"human_reviewed"}
+{"question_id":"synthetic-1","query":"APNs throughput","passage_id":"fixture-c","text":"APNs sends notifications to Apple devices.","relevance":1,"split":"test","label_origin":"human_reviewed"}

@@ -1,0 +1,14 @@
+# Secrets belong in JDX_API_TOKEN, never in a committed configuration.
+data_dir: ./var/jdx-researcher
+mode: local
+bind: 127.0.0.1
+port: 8787
+llm_base_url: http://127.0.0.1:8080/v1
+llm_model: research-worker
+llm_context_tokens: 16384
+searxng_url: http://127.0.0.1:8888
+download_concurrency: 4
+ranking: lexical
+model_revision: UNVERIFIED
+model_sha256: UNVERIFIED
+chat_template_revision: UNVERIFIED

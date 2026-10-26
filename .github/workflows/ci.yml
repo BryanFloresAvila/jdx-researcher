@@ -1,0 +1,88 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: macos-14
+            python: "3.12"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - name: Resolve environment (or enforce existing lock)
+        shell: bash
+        run: |
+          if [ -f uv.lock ]; then
+            uv sync --locked --extra dev --python "${{ matrix.python }}"
+          else
+            uv sync --extra dev --python "${{ matrix.python }}"
+          fi
+      - name: Static checks
+        run: uv run ruff check .
+      - name: Behavioral and real MCP transport tests
+        run: uv run pytest -q --junitxml=junit.xml
+      - name: Build distribution
+        run: uv build
+      - name: Upload resolved lock
+        if: always() && matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-lock
+          path: uv.lock
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests-${{ matrix.os }}-${{ matrix.python }}
+          path: junit.xml
+          if-no-files-found: ignore
+  capture-initial-lock:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-lock
+          path: resolved
+      - name: Preserve the first successfully tested universal lock
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          if [ -f uv.lock ]; then
+            exit 0
+          fi
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "$EXPECTED_SHA" ]; then
+            exit 0
+          fi
+          cp resolved/uv.lock uv.lock
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "build: capture validated dependency lock"
+          git push origin HEAD:main

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jdx-researcher"
+version = "0.1.0"
+description = "Persistent local research jobs, versioned evidence, MCP and cloud review"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "aiosqlite>=0.21,<1",
+  "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
+  "httpcore>=1.0.9,<2",
+  "langgraph>=0.4,<2",
+  "langgraph-checkpoint-sqlite>=2,<4",
+  "mcp>=1.26,<2",
+  "platformdirs>=4,<5",
+  "pydantic>=2.10,<3",
+  "pymupdf>=1.25,<2",
+  "pyyaml>=6,<7",
+  "trafilatura>=2,<3",
+  "typer>=0.15,<1",
+  "uvicorn>=0.34,<1",
+]
+
+[project.optional-dependencies]
+ranking = ["transformers>=4.51,<5", "torch>=2.6,<3"]
+dev = ["build>=1,<2", "pytest>=8,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11,<1"]
+
+[project.scripts]
+jdx-researcher = "jdx_researcher.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jdx_researcher"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]

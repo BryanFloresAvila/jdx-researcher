@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "objective": "Comparar rendimiento y limitaciones de un servidor local",
+  "subquestions": [
+    "¿Qué rendimiento publica cada fuente?",
+    "¿Qué limitaciones y discrepancias existen?"
+  ],
+  "idempotency_key": "demo-001",
+  "languages": [
+    "es",
+    "en"
+  ],
+  "output_language": "es"
+}
