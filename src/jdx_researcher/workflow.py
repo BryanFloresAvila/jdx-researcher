@@ -219,8 +219,16 @@ class Workflow:
         while True:
             self.store.guard(job_id, self.owner)
             history = [message for group in progress["groups"][-3:] for message in group]
+            remaining_gap_rounds = request["budget"]["max_gap_rounds"] - progress["gap_rounds"]
+            reminder = [{"role": "user", "content": encode({
+                "remaining_gap_rounds": remaining_gap_rounds,
+                "note": ("No gap rounds left: do not call search_sources again; record a finding "
+                          "for every subquestion (use insufficient if needed) or finish now.")
+                         if remaining_gap_rounds <= 0 else
+                         "Prefer recording a finding from the passages already given over searching again."
+            })}]
             message = await self.call_model(job_id, f"model:analysis:{progress['turn']}",
-                                            initial + history, TOOLS)
+                                            initial + history + reminder, TOOLS)
             replies, finished = [], False
             for call in message["tool_calls"]:
                 action_key = f"tool:{progress['turn']}:{call['id']}"

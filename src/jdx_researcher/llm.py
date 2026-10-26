@@ -52,6 +52,9 @@ or insufficient relations. An excerpt containing a claim is not independent veri
 Look for limitations and opposing evidence. Do not count mirrors as independent measurements.
 Do not invent dates, findings or references. Missing evidence is a gap. Finish when budgets
 or coverage prevent further useful work. The cloud client performs final semantic review.
+Searching again is not a substitute for recording what you already have. Before requesting
+another search, call record_finding at least once per subquestion using the best passages
+available so far, even with an insufficient relation naming exactly what is missing.
 """
 
 
