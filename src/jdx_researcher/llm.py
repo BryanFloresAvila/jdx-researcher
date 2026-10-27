@@ -27,7 +27,8 @@ TOOL_MODELS = {
     "finish_research": FinishArguments,
 }
 DESCRIPTIONS = {
-    "search_sources": "Search public sources within the remaining search and gap budgets.",
+    "search_sources": ("Search public sources within the remaining search and gap budgets. "
+                       "Results mix relevance, popularity, recent activity and emerging work."),
     "read_source": "Download one public HTTP(S) source and preserve exact evidence.",
     "inspect_evidence": "Retrieve conserved passages relevant to a subquestion.",
     "record_finding": "Propose an atomic finding linked to conserved passage IDs, never a verified fact.",
@@ -52,10 +53,17 @@ or insufficient relations. An excerpt containing a claim is not independent veri
 Look for limitations and opposing evidence. Do not count mirrors as independent measurements.
 Do not invent dates, findings or references. Missing evidence is a gap. Finish when budgets
 or coverage prevent further useful work. The cloud client performs final semantic review.
+Fast-moving topics (models, tools, agents) change monthly: check primary frontier sources such as
+huggingface and github, not only the web, and say when evidence may be outdated.
 Searching again is not a substitute for recording what you already have. Before requesting
 another search, call record_finding at least once per subquestion using the best passages
 available so far, even with an insufficient relation naming exactly what is missing.
 """
+
+
+def input_char_budget(settings):
+    # Conservative guard, not a tokenizer measurement; exact context is runtime-dependent.
+    return (settings.llm_context_tokens - settings.llm_max_tokens) * 3
 
 
 class LocalModel:
@@ -69,9 +77,7 @@ class LocalModel:
         await self.client.aclose()
 
     async def complete(self, messages, tools, choice="auto"):
-        # Conservative guard, not a tokenizer measurement; exact context is runtime-dependent.
-        serialized = json.dumps(messages, ensure_ascii=False)
-        if len(serialized) > (self.settings.llm_context_tokens - self.settings.llm_max_tokens) * 3:
+        if len(json.dumps(messages, ensure_ascii=False)) > input_char_budget(self.settings):
             raise ValueError("Worker input exceeds conservative context budget")
         response = await self.client.post("chat/completions", json={
             "model": self.settings.llm_model, "messages": messages, "tools": tools,

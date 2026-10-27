@@ -16,6 +16,7 @@ from .llm import LocalModel, PLAN_TOOL
 from .maintenance import backup, restore
 from .mcp_server import build_mcp
 from .models import FinalReport, Plan, ResearchRequest
+from .orchestrator import OrchestrationRequest, orchestrate, render_markdown
 from .proxy import HttpGateway
 
 app = typer.Typer(no_args_is_help=True, help="Local research daemon, durable evidence and MCP.")
@@ -128,6 +129,25 @@ def export(ctx: typer.Context, job_id: str, output: Annotated[Path, typer.Option
         (output / "report.md").write_text(text)
     emit({"output": str(output.resolve()), "passages": len(package["passages"]),
           "report": bool(report)})
+
+
+@app.command("orchestrate")
+def orchestrate_command(ctx: typer.Context, request: Annotated[Path, typer.Argument(exists=True)],
+                        output: Annotated[Path, typer.Option("--output")], poll_seconds: float = 5.0):
+    """Run bounded jobs as sub-agents, follow up on structural gaps, then synthesize."""
+    parsed = OrchestrationRequest.model_validate_json(request.read_text())
+    async def run():
+        gateway = HttpGateway(ctx.obj)
+        try:
+            return await orchestrate(gateway, parsed, poll_seconds)
+        finally:
+            await gateway.close()
+    result = asyncio.run(run())
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "orchestration.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    (output / "summary.md").write_text(render_markdown(result))
+    emit({"output": str(output.resolve()), "stop_reason": result["stop_reason"], "jobs": len(result["jobs"]),
+          "findings": len(result["findings"]), "open_gaps": result["open_gaps"]})
 
 
 @app.command()

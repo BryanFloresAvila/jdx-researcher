@@ -36,6 +36,8 @@ class Settings(BaseModel):
     lease_seconds: float = Field(60, ge=3, le=300)
     poll_seconds: float = Field(0.5, gt=0, le=10)
     api_token: SecretStr | None = None
+    # Raises the GitHub search rate limit (10/min anonymous); each github query uses 4 views.
+    github_token: SecretStr | None = None
 
     @model_validator(mode="after")
     def trusted_service_urls(self):
@@ -62,7 +64,7 @@ class Settings(BaseModel):
         return value
 
     def public_manifest(self) -> dict:
-        data = self.model_dump(mode="json", exclude={"api_token"})
+        data = self.model_dump(mode="json", exclude={"api_token", "github_token"})
         data.pop("data_dir", None)
         return data
 
@@ -77,6 +79,7 @@ def load_settings(path: Path | None = None) -> Settings:
         "JDX_LLM_MODEL": "llm_model",
         "JDX_SEARXNG_URL": "searxng_url",
         "JDX_API_TOKEN": "api_token",
+        "JDX_GITHUB_TOKEN": "github_token",
     }.items():
         if env in os.environ:
             values[key] = os.environ[env]

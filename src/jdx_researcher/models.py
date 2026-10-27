@@ -47,7 +47,11 @@ class ResearchRequest(Contract):
 
 class Query(Contract):
     query: str = Field(min_length=2, max_length=800)
-    provider: Literal["web", "github", "arxiv"] = "web"
+    provider: Literal["web", "github", "arxiv", "huggingface"] = Field("web", description=(
+        "huggingface: models and papers (query is matched against model repo names, so use 1-2 "
+        "short keywords); github: code and tools; arxiv: papers; web: everything else."))
+    recency: Literal["any", "year", "month", "week"] = Field("any", description=(
+        "Restrict to recent work when the question is about the latest state of a fast-moving topic."))
     language: Literal["es", "en"] = "en"
     subquestion: int = Field(0, ge=0, le=3)
 

@@ -1,12 +1,14 @@
 import asyncio
+import itertools
 import json
+from datetime import UTC, datetime
 from typing import TypedDict
 
 import httpx
 from langgraph.graph import END, START, StateGraph
 from pydantic import ValidationError
 
-from .llm import PLAN_TOOL, SYSTEM, TOOLS, TOOL_MODELS
+from .llm import PLAN_TOOL, SYSTEM, TOOL_MODELS, TOOLS, input_char_budget
 from .models import BudgetExceeded, Finding, Plan, Query, ReaderError, ResearchRequest
 from .network import validate_url
 from .ranking import select
@@ -16,6 +18,32 @@ from .storage import digest, encode
 
 class ResearchState(TypedDict):
     job_id: str
+
+
+REPEATABLE_TOOLS = ("search_sources", "read_source", "inspect_evidence")
+
+
+def today(request):
+    """The worker's knowledge is older than the job, so it is told the reference date."""
+    as_of = request["as_of"] if isinstance(request, dict) else request.as_of
+    return str(as_of or datetime.now(UTC).date())
+
+
+def compact_tool_message(message, chars=160):
+    """Shrink a tool result to ids plus short excerpts; ids stay valid for record_finding."""
+    if message.get("role") != "tool":
+        return message
+    try:
+        value = json.loads(message["content"])
+    except ValueError:
+        return message
+    if not isinstance(value, dict):
+        return message
+    if isinstance(value.get("passages"), list):
+        value["passages"] = [{"passage_id": p["passage_id"], "excerpt": p["text"][:chars]} for p in value["passages"]]
+    if isinstance(value.get("results"), list):
+        value["results"] = [{"url": r.get("url"), "title": r.get("title")} for r in value["results"]]
+    return message | {"content": encode(value)}
 
 
 class Workflow:
@@ -66,8 +94,12 @@ class Workflow:
                 Query(query=q[:800], language=request.languages[i % len(request.languages)], subquestion=i)
                 for i, q in enumerate(questions)])
         else:
-            messages = [{"role": "system", "content": SYSTEM + "\nSubmit only a research plan."},
-                        {"role": "user", "content": encode(request.model_dump(mode="json"))}]
+            messages = [{"role": "system", "content": SYSTEM + (
+                            "\nSubmit only a research plan. Spread queries across providers: huggingface "
+                            "for models and papers, github for code and tools, arxiv for papers, web for "
+                            "the rest. Set recency when the objective asks for the latest state. Your "
+                            "training data is older than `today`: never add past years to a query.")},
+                        {"role": "user", "content": encode(request.model_dump(mode="json") | {"today": today(request)})}]
             # One repair of invalid arguments, using a new persisted attempt key.
             for attempt in range(2):
                 message = await self.call_model(
@@ -78,8 +110,14 @@ class Workflow:
                     if len(calls) != 1 or calls[0]["function"]["name"] != "submit_plan":
                         raise ValueError("Expected exactly one submit_plan call")
                     plan = Plan.model_validate_json(calls[0]["function"]["arguments"])
-                    if request.subquestions and plan.subquestions != request.subquestions:
-                        raise ValueError("Preserve caller-provided subquestions exactly")
+                    if request.subquestions:
+                        caller = request.subquestions
+                        if plan.subquestions[:len(caller)] != caller:
+                            raise ValueError("Preserve caller-provided subquestions exactly")
+                        # Extra model-proposed subquestions are outside the caller's scope; drop
+                        # them and their queries rather than failing the whole job.
+                        plan = Plan(subquestions=caller,
+                                    queries=[q for q in plan.queries if q.subquestion < len(caller)])
                     if any(q.subquestion >= len(plan.subquestions) for q in plan.queries):
                         raise ValueError("Query references an unknown subquestion")
                     break
@@ -162,15 +200,18 @@ class Workflow:
             self.store.put(job_id, self.owner, "demo:retrieved", True)
             return state
         request = self.store.job(job_id)["request"]
-        results = []
+        per_query = []
         for query in self.store.artifact(job_id, "plan")["queries"]:
             try:
                 data = await self.do_search(job_id, Query.model_validate(query))
-                results.extend(item["url"] for item in data["results"])
+                per_query.append([item["url"] for item in data["results"]])
             except BudgetExceeded as exc:
                 self.issue(job_id, str(exc))
                 break
-        urls = list(dict.fromkeys(request["seed_urls"] + results))
+        # Round-robin so the document budget reaches every query and provider instead of
+        # being spent entirely on the first query's results.
+        ranked = [url for batch in itertools.zip_longest(*per_query) for url in batch if url]
+        urls = list(dict.fromkeys(request["seed_urls"] + ranked))
         # Each read accounts independently; one bad source does not discard other evidence.
         async def bounded_read(url):
             try:
@@ -181,6 +222,54 @@ class Workflow:
                 self.issue(job_id, "Blocked invalid or private source URL")
         await asyncio.gather(*(bounded_read(url) for url in urls[:request["budget"]["max_documents"]]))
         return state
+
+    def _work_order(self, job_id, plan, request, progress):
+        """MIRA-style meta-reasoning step: a deterministic (no extra LLM call) read of the
+        persistent record (findings so far) plus a Budget Guard style feasibility check,
+        producing one explicit next-work-order directive instead of a generic reminder."""
+        findings = self.store.artifacts(job_id, "finding:")
+        coverage = []
+        for index, question in enumerate(plan["subquestions"]):
+            relations = [e["relation"] for f in findings if f["subquestion"] == index for e in f["evidence"]]
+            coverage.append({"subquestion": index, "question": question,
+                             "supports": relations.count("supports"),
+                             "contradicts": relations.count("contradicts"),
+                             "insufficient": relations.count("insufficient")})
+        usage, budget = self.store.job(job_id)["usage"], request["budget"]
+        remaining_budget = {"steps": budget["max_agent_steps"] - usage["steps"],
+                            "documents": budget["max_documents"] - usage["documents"],
+                            "queries": budget["max_queries"] - usage["queries"],
+                            "gap_rounds": budget["max_gap_rounds"] - progress["gap_rounds"]}
+        uncovered = [c["question"] for c in coverage if not (c["supports"] or c["contradicts"] or c["insufficient"])]
+        if uncovered and (remaining_budget["steps"] <= 2 or remaining_budget["gap_rounds"] <= 0):
+            directive = ("Budget is nearly exhausted. For every subquestion with no finding yet, call "
+                         "record_finding now with an insufficient relation naming what is missing, "
+                         "then call finish_research.")
+        elif uncovered:
+            directive = ("No finding recorded yet for: " + "; ".join(uncovered) +
+                         ". Call record_finding for one of these now, citing passage ids you already have "
+                         "(candidate_passage_ids or the initial passages); use relation insufficient if they "
+                         "do not answer it. Only call inspect_evidence with a query you have not used yet.")
+        else:
+            directive = "Every subquestion already has at least one finding. Call finish_research now."
+        return {"coverage": coverage, "remaining_budget": remaining_budget, "next_work_order": directive,
+                "candidate_passage_ids": progress.get("candidates", [])[-12:],
+                "already_inspected_queries": list(dict.fromkeys(progress.get("inspected", [])))}
+
+    def _fit_context(self, initial, groups, reminder):
+        """ContextBudget: compact older tool results first, then the newest, and only then drop
+        whole turns, instead of overflowing the worker context and aborting the job."""
+        groups = [list(group) for group in groups]
+        def fits():
+            messages = initial + [message for group in groups for message in group] + reminder
+            return len(json.dumps(messages, ensure_ascii=False)) <= input_char_budget(self.settings)
+        for index in range(len(groups)):
+            if fits():
+                break
+            groups[index] = [compact_tool_message(message) for message in groups[index]]
+        while groups and not fits():
+            groups.pop(0)
+        return initial + [message for group in groups for message in group] + reminder
 
     async def analyze(self, state):
         job_id = state["job_id"]
@@ -208,27 +297,29 @@ class Workflow:
         self.store.put(job_id, self.owner, "ranking", decisions)
         progress = self.store.artifact(job_id, "analysis:progress") or {
             "turn": 0, "groups": [], "invalid": 0, "gap_rounds": 0}
+        for key, default in (("seen", []), ("repeats", 0), ("inspected", []), ("candidates", [])):
+            progress.setdefault(key, default)
         request = self.store.job(job_id)["request"]
         initial = [
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": encode({
                 "objective": request["objective"], "constraints": request["constraints"],
-                "as_of": request["as_of"], "plan": plan, "passages": passages[:12],
-                "remaining_budget": self.store.job(job_id)["usage"],
+                "as_of": request["as_of"], "today": today(request), "plan": plan, "passages": passages[:12],
                 "instruction": "Inspect evidence, record supported and contradictory findings, then finish."})}]
         while True:
             self.store.guard(job_id, self.owner)
-            history = [message for group in progress["groups"][-3:] for message in group]
-            remaining_gap_rounds = request["budget"]["max_gap_rounds"] - progress["gap_rounds"]
+            # Turns outside the context window still happened; list them so a long
+            # run does not repeat a read/search it can no longer see in its history.
+            already_read = sorted({s["original_url"] for s in self.store.sources(job_id)})
+            already_searched = sorted({a["query"]["query"] for a in self.store.artifacts(job_id, "search:")})
             reminder = [{"role": "user", "content": encode({
-                "remaining_gap_rounds": remaining_gap_rounds,
-                "note": ("No gap rounds left: do not call search_sources again; record a finding "
-                          "for every subquestion (use insufficient if needed) or finish now.")
-                         if remaining_gap_rounds <= 0 else
-                         "Prefer recording a finding from the passages already given over searching again."
+                **self._work_order(job_id, plan, request, progress),
+                "already_read_urls": already_read,
+                "already_searched_queries": already_searched,
             })}]
             message = await self.call_model(job_id, f"model:analysis:{progress['turn']}",
-                                            initial + history + reminder, TOOLS)
+                                            self._fit_context(initial, progress["groups"][-3:], reminder),
+                                            TOOLS)
             replies, finished = [], False
             for call in message["tool_calls"]:
                 action_key = f"tool:{progress['turn']}:{call['id']}"
@@ -239,7 +330,16 @@ class Workflow:
                         if name not in TOOL_MODELS:
                             raise ValueError("Unknown tool")
                         arguments = TOOL_MODELS[name].model_validate_json(call["function"]["arguments"])
-                        if name == "search_sources":
+                        signature = digest(encode([name, arguments.model_dump(mode="json")]))
+                        if name in REPEATABLE_TOOLS and signature in progress["seen"]:
+                            # Budget Guard: an identical action returns identical data, so it only burns steps.
+                            progress["repeats"] += 1
+                            if progress["repeats"] > 2:
+                                raise BudgetExceeded("Stopped after repeated identical tool calls")
+                            result = {"error": "Repeated call: this exact action was already done and its "
+                                               "result is unchanged. Record a finding from passages you "
+                                               "already have, or take a different action."}
+                        elif name == "search_sources":
                             if progress["gap_rounds"] >= request["budget"]["max_gap_rounds"]:
                                 raise BudgetExceeded("Gap-round limit reached")
                             if arguments.subquestion >= len(plan["subquestions"]):
@@ -250,6 +350,9 @@ class Workflow:
                             result = await self.do_read(job_id, arguments.url)
                         elif name == "inspect_evidence":
                             result = {"passages": self.store.retrieve(job_id, arguments.query, limit=6)}
+                            progress["inspected"].append(arguments.query)
+                            progress["candidates"] = list(dict.fromkeys(
+                                progress["candidates"] + [p["passage_id"] for p in result["passages"]]))[-24:]
                         elif name == "record_finding":
                             # Origin/review fields cannot be impersonated by a model.
                             if arguments.origin != "local_model":
@@ -259,6 +362,8 @@ class Workflow:
                             for gap in arguments.gaps:
                                 self.issue(job_id, "Unresolved: " + gap)
                             result = {"finished": True}
+                        if name in REPEATABLE_TOOLS and signature not in progress["seen"]:
+                            progress["seen"].append(signature)
                         progress["invalid"] = 0
                     except BudgetExceeded as exc:
                         self.issue(job_id, str(exc))

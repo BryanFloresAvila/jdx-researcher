@@ -9,6 +9,6 @@ llm_context_tokens: 16384
 searxng_url: http://127.0.0.1:8888
 download_concurrency: 4
 ranking: lexical
-model_revision: UNVERIFIED
-model_sha256: UNVERIFIED
-chat_template_revision: UNVERIFIED
+model_revision: d92b02e27074b27542384f72bc0e72203c970f0f
+model_sha256: d93c393a9bd5139a4b5cfe24d31ef553c5a497bfb8afec178a354ecbf508f062
+chat_template_revision: embedded-in-gguf@d92b02e27074b27542384f72bc0e72203c970f0f

@@ -172,6 +172,53 @@ async def test_actual_local_agent_contract(settings):
         await service.stop()
 
 
+async def test_plan_extra_subquestions_are_dropped_not_fatal(settings):
+    settings.mode = "local"
+    caller = ["What is measured throughput?"]
+    plan_inputs = []
+    def respond(request):
+        payload = json.loads(request.content)
+        if payload["tools"][0]["function"]["name"] == "submit_plan":
+            plan_inputs.append(json.loads(payload["messages"][1]["content"]))
+            return httpx.Response(200, json=completion("submit_plan", {
+                "subquestions": caller + ["Is it suitable for my laptop?"],
+                "queries": [{"query": "throughput", "subquestion": 0},
+                            {"query": "laptop suitability", "subquestion": 1}]}))
+        return httpx.Response(200, json=completion("finish_research", {"gaps": []}))
+    model = LocalModel(settings, transport=httpx.MockTransport(respond))
+    service = Service(settings, model=model, search=FakeSearch(), fetcher=FakeFetcher())
+    await service.start()
+    try:
+        job_id = service.store.start(ResearchRequest(
+            objective="Throughput review", subquestions=caller, idempotency_key="extra"))["job_id"]
+        assert (await wait_delivered(service, job_id))["status"] != "failed"
+        plan = service.store.artifact(job_id, "plan")
+        assert plan["subquestions"] == caller
+        assert [q["query"] for q in plan["queries"]] == ["throughput"]
+        assert plan_inputs[0]["today"]
+    finally:
+        await service.stop()
+
+
+async def test_document_budget_is_shared_round_robin_across_queries(settings):
+    settings.mode = "retrieval"
+    class PerQuerySearch(FakeSearch):
+        async def search(self, query, limit=8):
+            return [SearchResult(url=f"https://example.org/{query.subquestion}/{i}", title="t", provider="web")
+                    for i in range(3)]
+    fetcher = FakeFetcher()
+    service = Service(settings, search=PerQuerySearch(), fetcher=fetcher)
+    await service.start()
+    try:
+        job_id = service.store.start(ResearchRequest(
+            objective="Round robin reads", subquestions=["First angle", "Second angle"],
+            budget={"max_documents": 2}, idempotency_key="round-robin"))["job_id"]
+        await wait_delivered(service, job_id)
+        assert sorted(fetcher.urls) == ["https://example.org/0/0", "https://example.org/1/0"]
+    finally:
+        await service.stop()
+
+
 async def test_invalid_model_plan_repaired_once(settings):
     settings.mode = "local"
     calls = []
@@ -217,3 +264,96 @@ async def test_search_errors_cached_and_counted(prepared, settings):
         assert store.job(job_id)["usage"]["queries"] == 1
     finally:
         await search.close()
+
+
+def test_work_order_targets_uncovered_then_finishes(prepared, settings):
+    from conftest import save_text
+
+    from jdx_researcher.models import Finding
+    from jdx_researcher.ranking import LexicalRanker
+    from jdx_researcher.workflow import Workflow
+    store, job_id, owner = prepared
+    plan = {"subquestions": ["Measured throughput?", "Documented limitations?"], "queries": []}
+    store.put(job_id, owner, "plan", plan)
+    pid = save_text(store, job_id, owner).passages[0].passage_id
+    workflow = Workflow(store, settings, owner, None, None, None, LexicalRanker())
+    request = store.job(job_id)["request"]
+
+    order = workflow._work_order(job_id, plan, request, {"gap_rounds": 0})
+    assert "Measured throughput?" in order["next_work_order"]
+    assert "Documented limitations?" in order["next_work_order"]
+    assert order["remaining_budget"]["gap_rounds"] == request["budget"]["max_gap_rounds"]
+
+    store.save_finding(job_id, owner, Finding(
+        text="Throughput is reported as 42 requests/s.", subquestion=0,
+        evidence=[{"passage_id": pid, "relation": "supports"}]))
+    order = workflow._work_order(job_id, plan, request, {"gap_rounds": 0})
+    assert order["coverage"][0]["supports"] == 1
+    assert "Measured throughput?" not in order["next_work_order"]
+    assert "Documented limitations?" in order["next_work_order"]
+
+    exhausted = workflow._work_order(job_id, plan, request,
+                                     {"gap_rounds": request["budget"]["max_gap_rounds"]})
+    assert exhausted["next_work_order"].startswith("Budget is nearly exhausted")
+
+    store.save_finding(job_id, owner, Finding(
+        text="Limitations: hardware conditions are not documented.", subquestion=1,
+        evidence=[{"passage_id": pid, "relation": "insufficient"}]))
+    order = workflow._work_order(job_id, plan, request, {"gap_rounds": 0})
+    assert "finish_research now" in order["next_work_order"]
+
+
+def test_fit_context_drops_oldest_turns_instead_of_overflowing(settings):
+    from jdx_researcher.llm import input_char_budget
+    from jdx_researcher.workflow import Workflow
+    workflow = Workflow(None, settings, "owner", None, None, None, None)
+    initial = [{"role": "user", "content": "start"}]
+    reminder = [{"role": "user", "content": "reminder"}]
+    big = "x" * (input_char_budget(settings) // 2)
+    groups = [[{"role": "tool", "content": big + str(i)}] for i in range(3)]
+
+    messages = workflow._fit_context(initial, groups, reminder)
+    assert len(json.dumps(messages)) <= input_char_budget(settings)
+    assert messages[0] == initial[0] and messages[-1] == reminder[0]
+    assert messages[1]["content"].endswith("2")
+
+    small = [[{"role": "tool", "content": "ok"}]]
+    assert workflow._fit_context(initial, small, reminder) == initial + small[0] + reminder
+
+
+def test_fit_context_compacts_tool_results_before_dropping_turns(settings):
+    from jdx_researcher.llm import input_char_budget
+    from jdx_researcher.storage import encode
+    from jdx_researcher.workflow import Workflow
+    workflow = Workflow(None, settings, "owner", None, None, None, None)
+    text = "y" * (input_char_budget(settings) // 6)
+    groups = [[{"role": "assistant", "content": None},
+               {"role": "tool", "content": encode({"passages": [{"passage_id": f"p_{i}_{j}", "text": text}
+                                                                 for j in range(2)]})}] for i in range(3)]
+    messages = workflow._fit_context([], groups, [])
+    assert len(json.dumps(messages)) <= input_char_budget(settings)
+    tool_results = [json.loads(m["content"]) for m in messages if m["role"] == "tool"]
+    assert len(tool_results) == 3
+    assert tool_results[0]["passages"][0] == {"passage_id": "p_0_0", "excerpt": "y" * 160}
+
+
+async def test_repeated_identical_tool_calls_are_cut_short(settings):
+    settings.mode = "local"
+    def respond(request):
+        payload = json.loads(request.content)
+        if payload["tools"][0]["function"]["name"] == "submit_plan":
+            return httpx.Response(200, json=completion("submit_plan", {
+                "subquestions": ["What is measured throughput?"],
+                "queries": [{"query": "throughput", "provider": "web", "language": "en", "subquestion": 0}]}))
+        return httpx.Response(200, json=completion("inspect_evidence", {"query": "throughput"}))
+    model = LocalModel(settings, transport=httpx.MockTransport(respond))
+    service = Service(settings, model=model, search=FakeSearch(), fetcher=FakeFetcher())
+    await service.start()
+    try:
+        job_id = service.store.start(ResearchRequest(
+            objective="What is measured throughput?", idempotency_key="repeat"))["job_id"]
+        job = await wait_delivered(service, job_id)
+        assert "Stopped after repeated identical tool calls" in service.store.issues(job_id)
+        assert job["usage"]["llm_calls"] == 5
+    finally:
+        await service.stop()

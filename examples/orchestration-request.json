@@ -1,0 +1,41 @@
+{
+  "objective": "Elegir un runtime local para servir un modelo de investigacion con tool calling en un Mac M4 Pro de 24 GB",
+  "idempotency_key": "runtime-choice-orchestrated-001",
+  "constraints": {
+    "hardware": "Apple M4 Pro",
+    "unified_memory_gb": 24,
+    "must_support": ["tool_calling", "local_inference"]
+  },
+  "languages": ["en"],
+  "output_language": "es",
+  "angles": [
+    {
+      "subquestions": [
+        "How does llama.cpp llama-server support tool calling?",
+        "Which llama-server flags or templates are required for reliable tool calling?"
+      ],
+      "seed_urls": ["https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md"]
+    },
+    {
+      "subquestions": [
+        "How does Ollama support tool calling?",
+        "What tool calling limitations are documented for Ollama?"
+      ],
+      "seed_urls": ["https://docs.ollama.com/capabilities/tool-calling"]
+    },
+    {
+      "subquestions": [
+        "How do llama.cpp and Ollama compare in generation speed on Apple Silicon?"
+      ]
+    }
+  ],
+  "budget": {
+    "max_queries": 8,
+    "max_documents": 12,
+    "max_agent_steps": 30,
+    "max_runtime_seconds": 600,
+    "max_gap_rounds": 2
+  },
+  "max_rounds": 1,
+  "max_jobs": 6
+}

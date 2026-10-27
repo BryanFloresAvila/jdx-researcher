@@ -43,12 +43,26 @@ Una invocación inicial de llama-server, si el GGUF y tu build incorporan el tem
 
 ~~~bash
 llama-server -m "$JDX_MODEL_PATH" --alias research-worker \
-  --host 127.0.0.1 --port 8080 --ctx-size 16384 --n-gpu-layers 99 --jinja
+  --host 127.0.0.1 --port 8080 --ctx-size 16384 --n-gpu-layers 99 --jinja \
+  --chat-template-kwargs '{"enable_thinking": false}'
 ~~~
+
+El template de Agents-A1-4B abre un bloque de razonamiento por defecto; sin `enable_thinking: false` el modelo consume los 2048 tokens de salida razonando y nunca emite la tool call (probe-model 0/20 frente a 20/20 con el flag).
 
 Comprueba las opciones de tu build con llama-server --help. El probe realiza 20 casos de esquema; exige 19 válidos para el control inicial de integración. No demuestra calidad de investigación ni sustituye las pruebas con herramientas en varios turnos. El parser qwen3_coder mencionado por la ficha del modelo corresponde a configuraciones de serving que lo ofrecen; no se pasa como un flag genérico a llama.cpp.
 
 El modo retrieval permite buscar y conservar evidencia sin llamar al modelo. No propone relaciones semánticas automáticamente.
+
+## Investigaciones largas
+
+Un trabajo está acotado: hasta 4 subpreguntas y 2 rondas de vacíos, aunque se le dé más tiempo. Para cubrir más, `orchestrate` lanza varios trabajos acotados (uno por ángulo), lanza seguimientos solo para las subpreguntas sin hallazgo de apoyo y se detiene por cobertura, falta de progreso, `max_rounds` o `max_jobs`. Es un cliente del daemon y no crea otro scheduler.
+
+~~~bash
+uv run jdx-researcher --config configs/local.yaml orchestrate examples/orchestration-request.json \
+  --output var/export-orchestration
+~~~
+
+Genera `orchestration.json` y `summary.md`; las citas usan `[[job_id/passage_id]]`. Dentro de cada trabajo, el agente recibe en cada turno la cobertura por subpregunta, el presupuesto restante y una orden de trabajo explícita; las llamadas idénticas repetidas no se ejecutan y, tras tres, el trabajo se detiene con un aviso visible. Los resultados antiguos se compactan para respetar el contexto del worker.
 
 ## Conectar MCP
 
